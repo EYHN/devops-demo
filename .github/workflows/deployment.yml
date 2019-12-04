@@ -1,0 +1,66 @@
+name: Deployment
+
+on: ['deployment']
+
+jobs:
+  deployment:
+    if: startsWith(github.event.deployment.environment, 'pr-')
+    runs-on: 'ubuntu-latest'
+
+    steps:
+    - name: 'deployment pending'
+      uses: 'deliverybot/deployment-status@master'
+      with:
+        state: 'pending'
+        token: '${{ github.token }}'
+
+    - uses: actions/checkout@v1
+
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v1
+      with:
+        private-key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        public-key: ${{ secrets.DEPLOY_SSH_PUBLIC_KEY }}
+        name: id_rsa
+
+    - name: Build docker image
+      run: |
+        docker build . --file Dockerfile --tag ${IMAGE_NAME}
+        docker save -o ./${IMAGE_NAME}.tar ${IMAGE_NAME}
+
+    - name: Send image
+      run: |
+        sftp -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}:/images <<< "put ./${IMAGE_NAME}.tar"
+
+    - name: Run Docker
+      id: RUN
+      run:
+        ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }} "${SCRIPT}"
+      env:
+        SCRIPT: |
+          IMAGE_NAME=${{ env.IMAGE_NAME }}
+          CONTAINER_NAME=${{ github.event.deployment.environment }}
+          docker load --input /images/${IMAGE_NAME}.tar
+          docker stop ${CONTAINER_NAME}
+          docker rm ${CONTAINER_NAME}
+          docker run -d --name ${CONTAINER_NAME} -p 3000 ${IMAGE_NAME}
+          EXPOSE_PORT=$(docker port ${CONTAINER_NAME} | sed -e 's,.*:,,g')
+          echo "PORT ${EXPOSE_PORT}"
+          echo "::set-output name=EXPOSE_PORT::${EXPOSE_PORT}"
+
+    - name: 'deployment success'
+      if: success()
+      uses: 'deliverybot/deployment-status@master'
+      with:
+        state: 'success'
+        token: '${{ github.token }}'
+        environment-url: http://devops.eyhn.in:${{steps.RUN.outputs.EXPOSE_PORT}}
+
+    - name: 'deployment failure'
+      if: failure()
+      uses: 'deliverybot/deployment-status@master'
+      with:
+        state: 'failure'
+        token: '${{ github.token }}'
+    env:
+      IMAGE_NAME: devops:${{ github.sha }}

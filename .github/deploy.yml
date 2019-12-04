@@ -1,0 +1,8 @@
+# staging:
+#   auto_deploy_on: refs/heads/master
+#   environment: staging
+
+review:
+  environment: pr-${{ pr }}
+  transient_environment: true
+  production_environment: false

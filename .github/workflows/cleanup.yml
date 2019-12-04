@@ -1,0 +1,24 @@
+name: cleanup
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  pr-close:
+    runs-on: 'ubuntu-latest'
+    steps:
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v1
+      with:
+        private-key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        public-key: ${{ secrets.DEPLOY_SSH_PUBLIC_KEY }}
+        name: id_rsa
+    - name: Cleanup
+      id: RUN
+      run:
+        ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }} "${SCRIPT}"
+      env:
+        SCRIPT: |
+          CONTAINER_NAME=pr-${{ github.event.pull_request.number }}
+          docker stop ${CONTAINER_NAME}
+          docker rm ${CONTAINER_NAME}

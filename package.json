@@ -1,0 +1,9 @@
+{
+  "main": "./src/index.js",
+  "scripts": {
+    "start": "node ."
+  },
+  "dependencies": {
+    "koa": "^2.11.0"
+  }
+}
